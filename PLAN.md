@@ -7,7 +7,7 @@ Hotseat play for 2–4 players on one device. Two dice modes: the app rolls for 
 Game state is persisted in localStorage so a game survives a page refresh.
 
 **Live URL:** https://pietroppeter.github.io/vihbezee/  
-**Branch:** `claude/yahtzee-nim-karax-ulxgir` → merged to `main` for Pages
+**Branch workflow:** feature branch → PR → merge to `main` → GitHub Pages auto-deploys
 
 ---
 
@@ -15,7 +15,7 @@ Game state is persisted in localStorage so a game survives a page refresh.
 
 | # | Component | Status |
 |---|-----------|--------|
-| 1 | Setup / Home screen | 🔨 in progress |
+| 1 | Setup / Home screen | ✅ done |
 | 2 | Dice rolling (Virtual + Physical input) | ⬜ todo |
 | 3 | Scorecard display + live preview | ⬜ todo |
 | 4 | Full turn loop (dice → score → next player) | ⬜ todo |
@@ -27,39 +27,43 @@ Cross-cutting concerns finished alongside each component:
 
 ---
 
-## Component 1 — Setup / Home Screen
+## Component 1 — Setup / Home Screen ✅
 
 **Goal:** on page load, show either a setup form or a "game in progress" summary.  
-No rolling or scoring yet — just state detection and game initialisation.
+No rolling or scoring — just state detection and game initialisation.
 
-### What it shows
+### Delivered
 
 **No saved game →** Setup form:
-- Dice mode toggle: `Virtual 🎲` / `Physical 🎯`
+- Dice mode toggle: `Physical 🎲` (default) / `Virtual 💻`
 - Player count selector: `2` `3` `4`
 - Name text inputs (one per player, defaults to "Player N")
 - `Start Game` button
 
 **Saved game found →** Game-in-progress card:
-- Player names listed
-- Dice mode icon (🎲 or 🎯)
-- Current round (e.g. "Round 3 / 13")
-- `Continue` button
-- `New Game` button (clears localStorage, returns to setup form)
+- Player names as pills, dice mode icon, current round
+- `Continue` button (wires up in C4)
+- `New Game` button with inline confirmation dialog
 
 ### localStorage schema (v1 — minimal)
 
 ```json
 {
   "version": 1,
-  "diceMode": "Virtual",
+  "diceMode": "Physical",
   "phase": "Playing",
   "round": 3,
   "playerNames": ["Alice", "Bob"]
 }
 ```
 
-Full game state fields will be added in later components without breaking this schema.
+Full game state fields added in C4 without breaking this schema.
+
+### Lessons learned
+
+- **Nim 1.6 JS backend + Karax `buildHtml`: closures in loops must use proc factories.**  
+  `let nn = n` inside `buildHtml` does not reliably capture by value after macro expansion.  
+  Pattern: define `proc onFoo(n: int): proc(ev, t) = result = proc(...) = use(n)` outside the render function, then pass `onFoo(n)` as the handler. See ADR-004.
 
 ---
 
