@@ -2716,7 +2716,7 @@ function init_486539521() {
     } while (false);
     }
     else {
-    initForm_486539518(0, 2);
+    initForm_486539518(1, 2);
     }
     
 
@@ -4127,7 +4127,7 @@ function HEX3Aanonymous_486539842(ev_486539843, t_486539844) {
 function HEX3Aanonymous_486539845(ev_486539846, t_486539847) {
         clearSaved_486539411();
         savedGame_486539299[0] = nimCopy(savedGame_486539299[0], none_486539325(), NTI486539283);
-        initForm_486539518(0, 2);
+        initForm_486539518(1, 2);
         showConfirmNew_486539301[0] = false;
         redraw_620758042(kxi__);
 
@@ -4778,7 +4778,7 @@ function renderSetupForm_486539687() {
     var Temporary1;
     
 function HEX3Aanonymous_486539746(ev_486539747, t_486539748) {
-        form_486539300[0].diceMode = 0;
+        form_486539300[0].diceMode = 1;
         redraw_620758042(kxi__);
 
       
@@ -4786,7 +4786,7 @@ function HEX3Aanonymous_486539746(ev_486539747, t_486539748) {
     var Temporary2;
     
 function HEX3Aanonymous_486539753(ev_486539754, t_486539755) {
-        form_486539300[0].diceMode = 1;
+        form_486539300[0].diceMode = 0;
         redraw_620758042(kxi__);
 
       
@@ -4817,7 +4817,7 @@ function HEX3Aanonymous_486539766(ev_486539767, t_486539768) {
     var tmp_486539728 = tree_654312266(44, []);
     tmp_486539728.class = "mode-toggle";
     var tmp_486539729 = tree_654312266(195, []);
-    if ((form_486539300[0].diceMode == 0)) {
+    if ((form_486539300[0].diceMode == 1)) {
     Temporary1 = "mode-btn active";
     }
     else {
@@ -4826,10 +4826,10 @@ function HEX3Aanonymous_486539766(ev_486539767, t_486539768) {
     
     tmp_486539729.class = Temporary1;
     addEventHandler_620758231(tmp_486539729, 0, HEX3Aanonymous_486539746, kxi__);
-    add_654312203(tmp_486539729, text_654312318(makeNimstrLit("\xF0\x9F\x92\xBB Virtual")));
+    add_654312203(tmp_486539729, text_654312318(makeNimstrLit("\xF0\x9F\x8E\xB2 Physical")));
     add_654312203(tmp_486539728, tmp_486539729);
     var tmp_486539730 = tree_654312266(195, []);
-    if ((form_486539300[0].diceMode == 1)) {
+    if ((form_486539300[0].diceMode == 0)) {
     Temporary2 = "mode-btn active";
     }
     else {
@@ -4838,7 +4838,7 @@ function HEX3Aanonymous_486539766(ev_486539767, t_486539768) {
     
     tmp_486539730.class = Temporary2;
     addEventHandler_620758231(tmp_486539730, 0, HEX3Aanonymous_486539753, kxi__);
-    add_654312203(tmp_486539730, text_654312318(makeNimstrLit("\xF0\x9F\x8E\xB2 Physical")));
+    add_654312203(tmp_486539730, text_654312318(makeNimstrLit("\xF0\x9F\x92\xBB Virtual")));
     add_654312203(tmp_486539728, tmp_486539730);
     add_654312203(tmp_486539726, tmp_486539728);
     add_654312203(tmp_486539719, tmp_486539726);

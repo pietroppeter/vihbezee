@@ -72,7 +72,7 @@ proc savePlaceholder(f: SetupForm) =
 
 # ── Init ───────────────────────────────────────────────────────────────────────
 
-proc initForm(d: DiceMode = Virtual; n: int = 2) =
+proc initForm(d: DiceMode = Physical; n: int = 2) =
   form = SetupForm(
     numPlayers: n,
     diceMode:   d,
@@ -115,15 +115,15 @@ proc renderSetupForm(): VNode =
       p(class = "field-label"): text "Dice mode"
       tdiv(class = "mode-toggle"):
         button(
-          class = (if form.diceMode == Virtual: "mode-btn active" else: "mode-btn"),
-          onclick = proc(ev: Event, t: VNode) =
-            form.diceMode = Virtual; redraw()):
-          text "💻 Virtual"
-        button(
           class = (if form.diceMode == Physical: "mode-btn active" else: "mode-btn"),
           onclick = proc(ev: Event, t: VNode) =
             form.diceMode = Physical; redraw()):
           text "🎲 Physical"
+        button(
+          class = (if form.diceMode == Virtual: "mode-btn active" else: "mode-btn"),
+          onclick = proc(ev: Event, t: VNode) =
+            form.diceMode = Virtual; redraw()):
+          text "💻 Virtual"
 
     # Player count
     tdiv(class = "field-group"):
