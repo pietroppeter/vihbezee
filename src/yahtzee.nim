@@ -76,7 +76,7 @@ proc initForm(d: DiceMode = Physical; n: int = 2) =
   form = SetupForm(
     numPlayers: n,
     diceMode:   d,
-    names:      ["Player 1", "Player 2", "Player 3", "Player 4"]
+    names:      ["", "", "", ""]
   )
 
 proc init() =
