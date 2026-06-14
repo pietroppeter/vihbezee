@@ -1,380 +1,204 @@
-import karax / [karax, karaxdsl, vdom, kdom, kajax]
-import std / [strutils, sequtils, algorithm, random, strformat]
+import karax / [karax, karaxdsl, vdom, kdom]
+import std / [json, options]
 
 # ── Types ──────────────────────────────────────────────────────────────────────
 
 type
-  Category = enum
-    Ones, Twos, Threes, Fours, Fives, Sixes,
-    ThreeOfAKind, FourOfAKind, FullHouse,
-    SmallStraight, LargeStraight, Yahtzee, Chance
+  DiceMode = enum Virtual, Physical
+  Phase    = enum Setup, Playing, GameOver
 
-  ScoreCard = array[Category, int]  # -1 = unused, >=0 = scored
+  # Minimal saved-state schema (v1). Extended in later components.
+  SavedGame = object
+    version:     int
+    phase:       Phase
+    round:       int
+    diceMode:    DiceMode
+    playerNames: seq[string]
 
-  Player = object
-    name: string
-    scores: ScoreCard
-    yahtzeeBonus: int   # extra +100 per bonus Yahtzee
-
-  Phase = enum
-    Setup, Playing, GameOver
-
-  GameState = object
-    phase: Phase
+  # Local UI state (not persisted)
+  SetupForm = object
     numPlayers: int
-    playerNames: array[4, string]
-    players: seq[Player]
-    currentPlayer: int
-    round: int          # 1..13
-    dice: array[5, int]
-    held: array[5, bool]
-    rollsLeft: int
+    names:      array[4, string]
+    diceMode:   DiceMode
 
-# ── Constants ──────────────────────────────────────────────────────────────────
+var
+  savedGame: Option[SavedGame]  # Some(g) if localStorage has a valid game
+  form: SetupForm               # setup form state
+  showConfirmNew: bool          # confirmation dialog before wiping in-progress game
 
-const
-  CategoryNames: array[Category, string] = [
-    "Ones", "Twos", "Threes", "Fours", "Fives", "Sixes",
-    "3 of a Kind", "4 of a Kind", "Full House",
-    "Sm. Straight", "Lg. Straight", "Yahtzee", "Chance"
-  ]
-  Upper = {Ones .. Sixes}
-  UpperBonus = 35
-  UpperBonusThreshold = 63
-  YahtzeeScore = 50
-  Unset = -1
+# ── localStorage helpers ───────────────────────────────────────────────────────
 
-# ── Global State ───────────────────────────────────────────────────────────────
+const StorageKey = "yahtzee"
 
-var gs = GameState(
-  phase: Setup,
-  numPlayers: 2,
-  playerNames: ["Player 1", "Player 2", "Player 3", "Player 4"],
-  rollsLeft: 3,
-  round: 1
-)
+proc loadSaved(): Option[SavedGame] =
+  let raw = window.localStorage.getItem(StorageKey)
+  if raw.isNil or $raw == "": return none(SavedGame)
+  try:
+    let j = parseJson($raw)
+    if j.kind != JObject: return none(SavedGame)
+    var g: SavedGame
+    g.version = j{"version"}.getInt(0)
+    g.round   = j{"round"}.getInt(1)
+    let phaseStr = j{"phase"}.getStr("Setup")
+    g.phase = case phaseStr
+      of "Playing":  Playing
+      of "GameOver": GameOver
+      else:          Setup
+    let modeStr = j{"diceMode"}.getStr("Virtual")
+    g.diceMode = if modeStr == "Physical": Physical else: Virtual
+    if j{"playerNames"}.kind == JArray:
+      for n in j["playerNames"]:
+        g.playerNames.add(n.getStr(""))
+    if g.playerNames.len < 2 or g.phase == Setup:
+      return none(SavedGame)
+    return some(g)
+  except:
+    return none(SavedGame)
 
-# ── Score Calculation ───────────────────────────────────────────────────────────
+proc clearSaved() =
+  window.localStorage.removeItem(StorageKey)
 
-proc counts(dice: array[5, int]): array[7, int] =
-  for d in dice: result[d] += 1
+proc savePlaceholder(f: SetupForm) =
+  # Will be replaced with full state save in later components.
+  # For now, write just enough to demonstrate resume detection.
+  let j = %* {
+    "version":     1,
+    "phase":       "Playing",
+    "round":       1,
+    "diceMode":    (if f.diceMode == Physical: "Physical" else: "Virtual"),
+    "playerNames": f.names[0 ..< f.numPlayers]
+  }
+  window.localStorage.setItem(StorageKey, cstring($j))
 
-proc scoreFor(cat: Category, dice: array[5, int]): int =
-  let c = counts(dice)
-  case cat
-  of Ones:   result = c[1] * 1
-  of Twos:   result = c[2] * 2
-  of Threes: result = c[3] * 3
-  of Fours:  result = c[4] * 4
-  of Fives:  result = c[5] * 5
-  of Sixes:  result = c[6] * 6
-  of ThreeOfAKind:
-    if c[1..6].anyIt(it >= 3): result = dice.foldl(a + b, 0)
-  of FourOfAKind:
-    if c[1..6].anyIt(it >= 4): result = dice.foldl(a + b, 0)
-  of FullHouse:
-    let has3 = c[1..6].anyIt(it == 3)
-    let has2 = c[1..6].anyIt(it == 2)
-    if has3 and has2: result = 25
-  of SmallStraight:
-    let s = sorted(deduplicate(dice.toSeq))
-    var run = 1; var best = 1
-    for i in 1 ..< s.len:
-      if s[i] == s[i-1] + 1: inc run
-      else: run = 1
-      if run > best: best = run
-    if best >= 4: result = 30
-  of LargeStraight:
-    let s = sorted(deduplicate(dice.toSeq))
-    if s.len == 5 and s[4] - s[0] == 4: result = 40
-  of Yahtzee:
-    if c[1..6].anyIt(it == 5): result = YahtzeeScore
-  of Chance:
-    result = dice.foldl(a + b, 0)
+# ── Init ───────────────────────────────────────────────────────────────────────
 
-proc jokerScore(cat: Category, dice: array[5, int]): int =
-  # Joker rules: bonus Yahtzee, score in lower section if upper is filled
-  case cat
-  of FullHouse:    result = 25
-  of SmallStraight: result = 30
-  of LargeStraight: result = 40
-  else: result = scoreFor(cat, dice)
-
-proc upperTotal(p: Player): int =
-  for cat in Ones .. Sixes:
-    if p.scores[cat] != Unset: result += p.scores[cat]
-
-proc upperBonus(p: Player): int =
-  if upperTotal(p) >= UpperBonusThreshold: UpperBonus else: 0
-
-proc lowerTotal(p: Player): int =
-  for cat in ThreeOfAKind .. Chance:
-    if p.scores[cat] != Unset: result += p.scores[cat]
-  result += p.yahtzeeBonus
-
-proc grandTotal(p: Player): int =
-  upperTotal(p) + upperBonus(p) + lowerTotal(p)
-
-proc isYahtzee(dice: array[5, int]): bool =
-  scoreFor(Yahtzee, dice) == YahtzeeScore
-
-proc previewScore(cat: Category, dice: array[5, int], p: Player): int =
-  # Bonus Yahtzee joker rules
-  if isYahtzee(dice) and p.scores[Yahtzee] == YahtzeeScore:
-    # Joker: must fill upper matching face first
-    let face = dice[0]
-    let matchCat = Category(face - 1)  # Ones=0, Twos=1 …
-    if p.scores[matchCat] == Unset:
-      if cat == matchCat: return scoreFor(cat, dice)
-      else: return 0
-    # Upper slot filled – free to use joker in any open lower slot
-    if cat in Upper: return scoreFor(cat, dice)
-    return jokerScore(cat, dice)
-  scoreFor(cat, dice)
-
-# ── Actions ────────────────────────────────────────────────────────────────────
-
-proc rollDice() =
-  for i in 0 ..< 5:
-    if not gs.held[i]:
-      gs.dice[i] = rand(1..6)
-  dec gs.rollsLeft
-
-proc resetTurn() =
-  gs.held = [false, false, false, false, false]
-  gs.rollsLeft = 3
-
-proc scoreCategory(cat: Category) =
-  let p = addr gs.players[gs.currentPlayer]
-  if p.scores[cat] != Unset: return
-
-  let isBonus = isYahtzee(gs.dice) and p.scores[Yahtzee] == YahtzeeScore
-  if isBonus: p.yahtzeeBonus += 100
-
-  p.scores[cat] = previewScore(cat, gs.dice, gs.players[gs.currentPlayer])
-
-  # Advance turn
-  gs.currentPlayer = (gs.currentPlayer + 1) mod gs.players.len
-  if gs.currentPlayer == 0: inc gs.round
-  if gs.round > 13:
-    gs.phase = GameOver
-  else:
-    resetTurn()
-
-proc startGame() =
-  gs.players = @[]
-  for i in 0 ..< gs.numPlayers:
-    var p = Player(name: gs.playerNames[i])
-    for cat in Category: p.scores[cat] = Unset
-    gs.players.add(p)
-  gs.currentPlayer = 0
-  gs.round = 1
-  gs.phase = Playing
-  randomize()
-  resetTurn()
-
-proc restartGame() =
-  gs = GameState(
-    phase: Setup,
-    numPlayers: 2,
-    playerNames: gs.playerNames,
-    rollsLeft: 3,
-    round: 1
+proc initForm(d: DiceMode = Virtual; n: int = 2) =
+  form = SetupForm(
+    numPlayers: n,
+    diceMode:   d,
+    names:      ["Player 1", "Player 2", "Player 3", "Player 4"]
   )
 
-# ── UI helpers ─────────────────────────────────────────────────────────────────
+proc init() =
+  savedGame = loadSaved()
+  if savedGame.isSome:
+    let g = savedGame.get
+    initForm(g.diceMode, g.playerNames.len)
+    for i, name in g.playerNames:
+      if i < 4: form.names[i] = name
+  else:
+    initForm()
 
-proc dieFace(n: int): string =
-  case n
-  of 1: "⚀"
-  of 2: "⚁"
-  of 3: "⚂"
-  of 4: "⚃"
-  of 5: "⚄"
-  of 6: "⚅"
-  else: "?"
+init()
 
-# ── Setup Screen ───────────────────────────────────────────────────────────────
+# ── Setup form ─────────────────────────────────────────────────────────────────
 
-proc renderSetup(): VNode =
+proc renderSetupForm(): VNode =
   buildHtml(tdiv(class = "screen setup-screen")):
     h1: text "Yahtzee"
-    p(class = "subtitle"): text "Hotseat · 2–4 players"
-    tdiv(class = "player-count"):
-      text "Number of players: "
-      for n in 2..4:
-        let cn = if gs.numPlayers == n: "cnt-btn active" else: "cnt-btn"
-        let nn = n
-        button(class = cn, onclick = proc(ev: Event, t: VNode) =
-          gs.numPlayers = nn; redraw()):
-          text $n
-    tdiv(class = "name-inputs"):
-      for i in 0 ..< gs.numPlayers:
-        let idx = i
-        tdiv(class = "name-row"):
-          label: text "Player " & $(i+1) & ":"
-          input(`type` = "text",
-                value = gs.playerNames[idx],
-                placeholder = "Player " & $(idx+1),
-                oninput = proc(ev: Event, t: VNode) =
-                  gs.playerNames[idx] = $ev.target.InputElement.value
-                  redraw())
-    button(class = "btn-primary start-btn", onclick = proc(ev: Event, t: VNode) =
-      startGame(); redraw()):
+
+    # Dice mode
+    tdiv(class = "field-group"):
+      p(class = "field-label"): text "Dice mode"
+      tdiv(class = "mode-toggle"):
+        button(
+          class = (if form.diceMode == Virtual: "mode-btn active" else: "mode-btn"),
+          onclick = proc(ev: Event, t: VNode) =
+            form.diceMode = Virtual; redraw()):
+          text "🎲 Virtual"
+        button(
+          class = (if form.diceMode == Physical: "mode-btn active" else: "mode-btn"),
+          onclick = proc(ev: Event, t: VNode) =
+            form.diceMode = Physical; redraw()):
+          text "🎯 Physical"
+
+    # Player count
+    tdiv(class = "field-group"):
+      p(class = "field-label"): text "Number of players"
+      tdiv(class = "count-row"):
+        for n in 2..4:
+          let nn = n
+          button(
+            class = (if form.numPlayers == nn: "cnt-btn active" else: "cnt-btn"),
+            onclick = proc(ev: Event, t: VNode) =
+              form.numPlayers = nn; redraw()):
+            text $n
+
+    # Names
+    tdiv(class = "field-group"):
+      p(class = "field-label"): text "Player names"
+      tdiv(class = "name-inputs"):
+        for i in 0 ..< form.numPlayers:
+          let idx = i
+          tdiv(class = "name-row"):
+            label: text $(i + 1) & ":"
+            input(`type` = "text",
+                  value = cstring(form.names[idx]),
+                  placeholder = cstring("Player " & $(idx + 1)),
+                  oninput = proc(ev: Event, t: VNode) =
+                    form.names[idx] = $ev.target.InputElement.value
+                    redraw())
+
+    button(class = "btn-primary start-btn",
+           onclick = proc(ev: Event, t: VNode) =
+             savePlaceholder(form)
+             savedGame = loadSaved()
+             redraw()):
       text "Start Game"
 
-# ── Scorecard ──────────────────────────────────────────────────────────────────
+# ── Game-in-progress card ──────────────────────────────────────────────────────
 
-proc renderScorecard(): VNode =
-  let cp = gs.currentPlayer
-  let canScore = gs.rollsLeft < 3  # at least one roll done
-  buildHtml(tdiv(class = "scorecard-area")):
-    tdiv(class = "scorecard-wrap"):
-      table(class = "scorecard"):
-        thead:
-          tr:
-            th: text "Category"
-            for i, p in gs.players:
-              let cls = if i == cp: "th-active" else: ""
-              th(class = cls): text p.name
-        tbody:
-          # Upper section
-          tr(class = "section-header"):
-            td(colspan = $(gs.players.len + 1)): text "Upper Section"
-          for cat in Ones .. Sixes:
-            tr:
-              td: text CategoryNames[cat]
-              for i, p in gs.players:
-                let score = p.scores[cat]
-                if score != Unset:
-                  td(class = "scored"): text $score
-                elif i == cp and canScore:
-                  let preview = previewScore(cat, gs.dice, p)
-                  let c = cat
-                  td(class = "preview",
-                     onclick = proc(ev: Event, t: VNode) =
-                       scoreCategory(c); redraw()):
-                    text $preview
-                else:
-                  td: text "–"
-          # Upper bonus row
-          tr(class = "bonus-row"):
-            td: text "Bonus (≥63 → +35)"
-            for p in gs.players:
-              let u = upperTotal(p)
-              let bonus = upperBonus(p)
-              if bonus > 0:
-                td(class = "scored"): text "+35"
-              else:
-                td: text $u & "/63"
-          # Lower section
-          tr(class = "section-header"):
-            td(colspan = $(gs.players.len + 1)): text "Lower Section"
-          for cat in ThreeOfAKind .. Chance:
-            tr:
-              td: text CategoryNames[cat]
-              for i, p in gs.players:
-                let score = p.scores[cat]
-                if score != Unset:
-                  td(class = "scored"): text $score
-                elif i == cp and canScore:
-                  let preview = previewScore(cat, gs.dice, p)
-                  let c = cat
-                  td(class = "preview",
-                     onclick = proc(ev: Event, t: VNode) =
-                       scoreCategory(c); redraw()):
-                    text $preview
-                else:
-                  td: text "–"
-          # Yahtzee bonus row
-          tr(class = "bonus-row"):
-            td: text "Yahtzee Bonus"
-            for p in gs.players:
-              td: text if p.yahtzeeBonus > 0: "+" & $p.yahtzeeBonus else: "–"
-          # Totals
-          tr(class = "total-row"):
-            td: text "Grand Total"
-            for p in gs.players:
-              td(class = "total"): text $grandTotal(p)
+proc renderGameCard(g: SavedGame): VNode =
+  let modeIcon = if g.diceMode == Physical: "🎯" else: "🎲"
+  let modeLabel = if g.diceMode == Physical: "Physical dice" else: "Virtual dice"
+  buildHtml(tdiv(class = "screen game-card-screen")):
+    h1: text "Yahtzee"
 
-# ── Dice Area ──────────────────────────────────────────────────────────────────
+    tdiv(class = "game-card"):
+      p(class = "card-title"): text "Game in progress"
+      p(class = "card-round"): text "Round " & $g.round & " / 13"
+      p(class = "card-mode"): text modeIcon & "  " & modeLabel
 
-proc renderDice(): VNode =
-  buildHtml(tdiv(class = "dice-area")):
-    tdiv(class = "dice-row"):
-      for i in 0 ..< 5:
-        let idx = i
-        let cls = if gs.held[idx]: "die held" else: "die"
-        tdiv(class = cls,
-             onclick = proc(ev: Event, t: VNode) =
-               if gs.rollsLeft < 3:
-                 gs.held[idx] = not gs.held[idx]; redraw()):
-          text dieFace(gs.dice[idx])
-          if gs.held[idx]:
-            span(class = "held-tag"): text "HELD"
+      tdiv(class = "card-players"):
+        for name in g.playerNames:
+          tdiv(class = "card-player"): text name
 
-# ── Playing Screen ─────────────────────────────────────────────────────────────
-
-proc renderPlaying(): VNode =
-  let cp = gs.currentPlayer
-  let p = gs.players[cp]
-  buildHtml(tdiv(class = "screen play-screen")):
-    tdiv(class = "play-header"):
-      span(class = "turn-info"):
-        text fmt"Round {gs.round}/13 — {p.name}'s turn"
-      span(class = "rolls-left"):
-        text fmt"Rolls left: {gs.rollsLeft}"
-    renderDice()
-    tdiv(class = "roll-area"):
-      if gs.rollsLeft > 0:
-        button(class = "btn-primary roll-btn",
+      tdiv(class = "card-actions"):
+        button(class = "btn-primary",
                onclick = proc(ev: Event, t: VNode) =
-                 rollDice(); redraw()):
-          text if gs.rollsLeft == 3: "Roll Dice" else: "Roll Again"
-      else:
-        p(class = "no-rolls"): text "No rolls left – pick a category"
-      if gs.rollsLeft < 3:
-        p(class = "hint"): text "Click a highlighted cell to score"
-    renderScorecard()
+                 # Future: transition to Playing screen
+                 redraw()):
+          text "Continue"
 
-# ── Game Over Screen ───────────────────────────────────────────────────────────
-
-proc renderGameOver(): VNode =
-  var ranked = gs.players
-  ranked.sort(proc(a, b: Player): int = cmp(grandTotal(b), grandTotal(a)))
-  buildHtml(tdiv(class = "screen gameover-screen")):
-    h1: text "Game Over!"
-    h2(class = "winner"): text ranked[0].name & " wins!"
-    table(class = "final-table"):
-      thead:
-        tr:
-          th: text "Rank"
-          th: text "Player"
-          th: text "Upper"
-          th: text "Bonus"
-          th: text "Lower"
-          th: text "Total"
-      tbody:
-        for i, p in ranked:
-          tr:
-            td: text $(i+1)
-            td: text p.name
-            td: text $upperTotal(p)
-            td: text $upperBonus(p)
-            td: text $lowerTotal(p)
-            td(class = "total"): text $grandTotal(p)
-    button(class = "btn-primary",
-           onclick = proc(ev: Event, t: VNode) =
-             restartGame(); redraw()):
-      text "Play Again"
+        if showConfirmNew:
+          tdiv(class = "confirm-box"):
+            p: text "Start a new game? Current game will be lost."
+            tdiv(class = "confirm-btns"):
+              button(class = "btn-danger",
+                     onclick = proc(ev: Event, t: VNode) =
+                       clearSaved()
+                       savedGame = none(SavedGame)
+                       initForm()
+                       showConfirmNew = false
+                       redraw()):
+                text "Yes, new game"
+              button(class = "btn-secondary",
+                     onclick = proc(ev: Event, t: VNode) =
+                       showConfirmNew = false; redraw()):
+                text "Cancel"
+        else:
+          button(class = "btn-secondary",
+                 onclick = proc(ev: Event, t: VNode) =
+                   showConfirmNew = true; redraw()):
+            text "New Game"
 
 # ── Root ───────────────────────────────────────────────────────────────────────
 
 proc createDom(): VNode =
   buildHtml(tdiv):
-    case gs.phase
-    of Setup:    renderSetup()
-    of Playing:  renderPlaying()
-    of GameOver: renderGameOver()
+    if savedGame.isSome:
+      renderGameCard(savedGame.get)
+    else:
+      renderSetupForm()
 
 setRenderer createDom
