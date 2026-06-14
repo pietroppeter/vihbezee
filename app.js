@@ -2682,7 +2682,7 @@ function get_486539543(self_486539545) {
 }
 
 function initForm_486539518(d_486539519, n_486539520) {
-    form_486539300[0] = nimCopy(form_486539300[0], {numPlayers: n_486539520, diceMode: d_486539519, names: [makeNimstrLit("Player 1"), makeNimstrLit("Player 2"), makeNimstrLit("Player 3"), makeNimstrLit("Player 4")]}, NTI486539270);
+    form_486539300[0] = nimCopy(form_486539300[0], {numPlayers: n_486539520, diceMode: d_486539519, names: [[], [], [], []]}, NTI486539270);
 
   
 }
