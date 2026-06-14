@@ -20,6 +20,7 @@ style.css         — styling
 app.js            — compiled JS bundle (committed, don't hand-edit)
 yahtzee.nimble    — declares karax dependency + build task
 PLAN.md           — component-by-component build plan (keep updated)
+DECISIONS.md      — architecture decision records (ADRs)
 .nojekyll         — tells GitHub Pages to skip Jekyll
 ```
 
@@ -35,18 +36,36 @@ Always compile before committing. Commit `app.js` as part of every meaningful ch
 
 ## Branch & deploy
 
-- Development branch: `claude/yahtzee-nim-karax-ulxgir`
-- Merges to `main` → triggers GitHub Pages (must be enabled once: Settings → Pages → main / root)
-- All asset paths in `index.html` are relative (`./app.js`, `./style.css`) — required for the project-page URL `https://pietroppeter.github.io/vihbezee/`
+- Feature branches → PR → merge to `main` → GitHub Pages auto-deploys
+- Pages must be enabled once: Settings → Pages → main / (root)
+- All asset paths in `index.html` are relative (`./app.js`, `./style.css`) — required for the project-page URL `https://pietroppeter.github.io/vihbezee/` (see ADR-002)
 
 ## Architecture notes
 
-- Everything lives in `src/yahtzee.nim`. Keep it that way until it gets genuinely unwieldy.
-- State is a single `GameState` object; functions mutate it then call `redraw()`.
-- localStorage key: `"yahtzee"`. Schema versioned with a `version` field so future migrations are possible.
-- Karax entry point: `setRenderer createDom` at the bottom of the file.
+- Everything lives in `src/yahtzee.nim` until it's genuinely unwieldy (see ADR-005)
+- State is a single `GameState` object; functions mutate it then call `redraw()`
+- localStorage key: `"yahtzee"`. Schema has a `version` field for safe future migrations (see ADR-006)
+- Karax entry point: `setRenderer createDom` at the bottom of the file
+
+## Known Nim/Karax gotcha — closure capture in loops (ADR-004)
+
+**Do not** write inline closures over loop variables inside `buildHtml`. Use a proc factory instead:
+
+```nim
+# Wrong — all handlers share the last value of i after macro expansion
+for i in 0..<n:
+  button(onclick = proc(ev, t) = doSomething(i)): ...
+
+# Correct — each call creates a fresh captured copy
+proc makeHandler(i: int): proc(ev: Event, t: VNode) =
+  result = proc(ev: Event, t: VNode) = doSomething(i)
+
+for i in 0..<n:
+  button(onclick = makeHandler(i)): ...
+```
 
 ## Build plan
 
 See `PLAN.md` for the full component breakdown and current status.
-Current target: **Component 1 — Setup / Home Screen**.
+See `DECISIONS.md` for architecture decisions.
+Current target: **Component 2 — Dice Rolling**.

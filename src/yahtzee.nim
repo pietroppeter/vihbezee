@@ -72,7 +72,7 @@ proc savePlaceholder(f: SetupForm) =
 
 # ── Init ───────────────────────────────────────────────────────────────────────
 
-proc initForm(d: DiceMode = Virtual; n: int = 2) =
+proc initForm(d: DiceMode = Physical; n: int = 2) =
   form = SetupForm(
     numPlayers: n,
     diceMode:   d,
@@ -91,6 +91,19 @@ proc init() =
 
 init()
 
+# ── Closure factories ─────────────────────────────────────────────────────────
+# Nim 1.6 JS backend: `let nn = n` inside buildHtml loops does NOT reliably
+# capture by value. Each proc call here creates a fresh stack frame with its
+# own copy of the argument, so the returned closure always closes over the
+# correct value.
+
+proc onCountClick(n: int): proc(ev: Event, t: VNode) =
+  result = proc(ev: Event, t: VNode) = form.numPlayers = n; redraw()
+
+proc onNameInput(idx: int): proc(ev: Event, t: VNode) =
+  result = proc(ev: Event, t: VNode) =
+    form.names[idx] = $ev.target.InputElement.value; redraw()
+
 # ── Setup form ─────────────────────────────────────────────────────────────────
 
 proc renderSetupForm(): VNode =
@@ -102,26 +115,24 @@ proc renderSetupForm(): VNode =
       p(class = "field-label"): text "Dice mode"
       tdiv(class = "mode-toggle"):
         button(
-          class = (if form.diceMode == Virtual: "mode-btn active" else: "mode-btn"),
-          onclick = proc(ev: Event, t: VNode) =
-            form.diceMode = Virtual; redraw()):
-          text "🎲 Virtual"
-        button(
           class = (if form.diceMode == Physical: "mode-btn active" else: "mode-btn"),
           onclick = proc(ev: Event, t: VNode) =
             form.diceMode = Physical; redraw()):
-          text "🎯 Physical"
+          text "🎲 Physical"
+        button(
+          class = (if form.diceMode == Virtual: "mode-btn active" else: "mode-btn"),
+          onclick = proc(ev: Event, t: VNode) =
+            form.diceMode = Virtual; redraw()):
+          text "💻 Virtual"
 
     # Player count
     tdiv(class = "field-group"):
       p(class = "field-label"): text "Number of players"
       tdiv(class = "count-row"):
         for n in 2..4:
-          let nn = n
           button(
-            class = (if form.numPlayers == nn: "cnt-btn active" else: "cnt-btn"),
-            onclick = proc(ev: Event, t: VNode) =
-              form.numPlayers = nn; redraw()):
+            class = (if form.numPlayers == n: "cnt-btn active" else: "cnt-btn"),
+            onclick = onCountClick(n)):
             text $n
 
     # Names
@@ -129,15 +140,12 @@ proc renderSetupForm(): VNode =
       p(class = "field-label"): text "Player names"
       tdiv(class = "name-inputs"):
         for i in 0 ..< form.numPlayers:
-          let idx = i
           tdiv(class = "name-row"):
             label: text $(i + 1) & ":"
             input(`type` = "text",
-                  value = cstring(form.names[idx]),
-                  placeholder = cstring("Player " & $(idx + 1)),
-                  oninput = proc(ev: Event, t: VNode) =
-                    form.names[idx] = $ev.target.InputElement.value
-                    redraw())
+                  value = cstring(form.names[i]),
+                  placeholder = cstring("Player " & $(i + 1)),
+                  oninput = onNameInput(i))
 
     button(class = "btn-primary start-btn",
            onclick = proc(ev: Event, t: VNode) =
