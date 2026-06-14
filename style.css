@@ -1,0 +1,182 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:       #1a1a2e;
+  --surface:  #16213e;
+  --card:     #0f3460;
+  --accent:   #e94560;
+  --accent2:  #f5a623;
+  --text:     #eaeaea;
+  --muted:    #9a9ab0;
+  --radius:   8px;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  min-height: 100vh;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 2rem 1rem;
+}
+
+h1 {
+  font-size: 2.8rem;
+  color: var(--accent);
+  text-align: center;
+  letter-spacing: 5px;
+  text-transform: uppercase;
+  margin-bottom: 1.5rem;
+}
+
+/* ── Shared screen wrapper ── */
+.screen {
+  width: 100%;
+  max-width: 440px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 2rem 1.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.4rem;
+}
+
+/* ── Field groups ── */
+.field-group { display: flex; flex-direction: column; gap: 0.55rem; }
+.field-label { color: var(--muted); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; }
+
+/* ── Dice mode toggle ── */
+.mode-toggle { display: flex; gap: 0.6rem; }
+.mode-btn {
+  flex: 1;
+  padding: 0.6rem 0;
+  background: var(--card);
+  border: 2px solid transparent;
+  border-radius: var(--radius);
+  color: var(--muted);
+  font-size: 1rem;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.mode-btn.active { border-color: var(--accent); color: var(--text); font-weight: 600; }
+
+/* ── Player count ── */
+.count-row { display: flex; gap: 0.6rem; }
+.cnt-btn {
+  width: 2.8rem; height: 2.8rem;
+  background: var(--card);
+  border: 2px solid transparent;
+  border-radius: 50%;
+  color: var(--muted);
+  font-size: 1.1rem;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.cnt-btn.active { border-color: var(--accent); color: var(--accent); font-weight: 700; }
+
+/* ── Name inputs ── */
+.name-inputs { display: flex; flex-direction: column; gap: 0.5rem; }
+.name-row { display: flex; align-items: center; gap: 0.7rem; }
+.name-row label { width: 1.4rem; color: var(--muted); flex-shrink: 0; text-align: right; }
+.name-row input {
+  flex: 1;
+  background: var(--card);
+  border: 1px solid #30305a;
+  color: var(--text);
+  padding: 0.45rem 0.75rem;
+  border-radius: var(--radius);
+  font-size: 1rem;
+}
+.name-row input:focus { outline: none; border-color: var(--accent); }
+
+/* ── Buttons ── */
+.btn-primary {
+  background: var(--accent);
+  border: none;
+  color: #fff;
+  padding: 0.7rem 1.6rem;
+  border-radius: var(--radius);
+  font-size: 1.05rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.btn-primary:hover { opacity: 0.88; }
+
+.btn-secondary {
+  background: transparent;
+  border: 2px solid var(--muted);
+  color: var(--muted);
+  padding: 0.65rem 1.4rem;
+  border-radius: var(--radius);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.btn-secondary:hover { border-color: var(--text); color: var(--text); }
+
+.btn-danger {
+  background: var(--accent);
+  border: none;
+  color: #fff;
+  padding: 0.6rem 1.2rem;
+  border-radius: var(--radius);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  opacity: 0.9;
+}
+.btn-danger:hover { opacity: 1; }
+
+.start-btn { align-self: center; padding: 0.75rem 3rem; }
+
+/* ── Game card (resume view) ── */
+.game-card {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 1.2rem 1.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+.card-title { font-weight: 700; font-size: 1.05rem; color: var(--accent2); }
+.card-round { color: var(--muted); font-size: 0.9rem; }
+.card-mode  { font-size: 1rem; }
+
+.card-players {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.2rem;
+}
+.card-player {
+  background: var(--surface);
+  border-radius: 20px;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.9rem;
+}
+
+.card-actions { display: flex; flex-direction: column; gap: 0.6rem; margin-top: 0.4rem; }
+
+/* ── Confirmation dialog ── */
+.confirm-box {
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 0.9rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+.confirm-box p { font-size: 0.95rem; color: var(--text); }
+.confirm-btns { display: flex; gap: 0.6rem; }
+
+/* ── Responsive ── */
+@media (max-width: 480px) {
+  body { padding: 1rem 0.5rem; }
+  .screen { padding: 1.5rem 1.2rem; }
+  h1 { font-size: 2.2rem; }
+}
